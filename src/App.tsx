@@ -15,7 +15,8 @@ import {
   Quote,
   CheckCircle2,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
@@ -29,7 +30,7 @@ import {
   orderBy, 
   limit, 
   Timestamp,
-  getDocsFromServer,
+  getDocs,
   doc
 } from 'firebase/firestore';
 
@@ -46,26 +47,6 @@ interface Commitment {
 
 const GOAL_HOURS = 18000;
 
-// Error Handling Helper
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  return errInfo;
-}
-
 export default function App() {
   const [commitments, setCommitments] = useState<Commitment[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,6 +58,7 @@ export default function App() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [aiQuote, setAiQuote] = useState<string>('"מוסיפים תורה, מוסיפים טוב, מוסיפים חיל לאומה"');
   const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const generateQuote = async () => {
     if (!process.env.GEMINI_API_KEY) {
@@ -99,22 +81,8 @@ export default function App() {
     }
   };
 
-  // Test Connection & Listen for Real-time Updates
-  useEffect(() => {
-    const testConnection = async () => {
-      try {
-        const q = query(collection(db, 'commitments'), limit(1));
-        await getDocsFromServer(q);
-        setConnectionError(null); 
-      } catch (error: any) {
-        console.error("Connection Test Error:", error);
-        const code = error.code || 'unknown';
-        const message = error.message || 'לא ידוע';
-        setConnectionError(`שגיאת חיבור (קוד: ${code}): ${message}. וודא שאתה מחובר לאינטרנט ושהגדרות הפרויקט תקינות.`);
-      }
-    };
-    testConnection();
-
+  const loadData = () => {
+    setConnectionError(null);
     const q = query(collection(db, 'commitments'), orderBy('timestamp', 'desc'), limit(50));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -123,12 +91,24 @@ export default function App() {
         ...doc.data()
       })) as Commitment[];
       setCommitments(docs);
+      setConnectionError(null);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'commitments');
+      console.error("Firestore Error:", error);
+      const code = error.code || 'unknown';
+      if (code === 'unavailable') {
+        setConnectionError("שגיאת חיבור: השרת לא זמין. אם אתה בנטפרי, ייתכן שצריך לבקש פתיחה של הכתובת.");
+      } else {
+        setConnectionError(`שגיאת חיבור (${code}): ${error.message}`);
+      }
     });
 
+    return unsubscribe;
+  };
+
+  useEffect(() => {
+    const unsubscribe = loadData();
     return () => unsubscribe();
-  }, []);
+  }, [retryCount]);
 
   const totalHours = useMemo(() => 
     commitments.reduce((sum, c) => sum + c.hours, 0), 
@@ -139,56 +119,56 @@ export default function App() {
   const handleCommit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || hours <= 0) return;
-
     setIsSubmitting(true);
-    
     try {
       const commitmentData: any = {
         name,
         hours: Number(hours),
         timestamp: Timestamp.now()
       };
-
       if (institution) commitmentData.institution = institution;
       if (phone) commitmentData.phone = phone;
-
       await addDoc(collection(db, 'commitments'), commitmentData);
-      
       setName('');
       setHours(1);
       setInstitution('');
       setPhone('');
       setIsModalOpen(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'commitments');
-      alert("חלה שגיאה בשמירת הנתונים. אנא נסה שוב.");
+      alert("חלה שגיאה בשמירת הנתונים. וודא שאתה מחובר.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen font-sans overflow-x-hidden">
+    <div className="min-h-screen font-sans overflow-x-hidden bg-[#FDFCF8]">
       {connectionError && (
-        <div className="bg-red-500 text-white p-2 text-center flex items-center justify-center gap-2">
-          <AlertCircle size={16} />
-          <span>{connectionError}</span>
+        <div className="bg-red-600 text-white p-3 text-center flex flex-col sm:flex-row items-center justify-center gap-3 sticky top-0 z-[200] shadow-lg">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={20} />
+            <span className="font-bold">{connectionError}</span>
+          </div>
+          <button 
+            onClick={() => setRetryCount(prev => prev + 1)}
+            className="bg-white text-red-600 px-4 py-1 rounded-full text-sm font-bold flex items-center gap-2 hover:bg-gray-100 transition-colors"
+          >
+            <RefreshCw size={14} />
+            נסה להתחבר שוב
+          </button>
         </div>
       )}
 
       {/* Header / Hero Section */}
       <header className="relative min-h-[90vh] md:h-[85vh] flex flex-col items-center justify-center text-center px-4 py-12 overflow-hidden">
-        {/* Background Elements */}
         <div className="absolute inset-0 z-0">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#C5A059]/10 rounded-full blur-[100px]" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#8E6E37]/10 rounded-full blur-[100px]" />
-          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/paper.png')] opacity-30" />
         </div>
 
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
           className="relative z-10 max-w-4xl mx-auto"
         >
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#C5A059]/10 text-[#8E6E37] font-semibold text-sm mb-6 border border-[#C5A059]/20">
@@ -197,7 +177,7 @@ export default function App() {
           </div>
           
           <h1 className="text-4xl sm:text-6xl md:text-8xl font-display font-black text-[#2D2926] mb-4 sm:mb-6 tracking-tighter leading-tight sm:leading-none px-2">
-            כוננים <span className="text-[#C5A059]">לתורה</span> <span className="text-xs opacity-20">v4</span>
+            כוננים <span className="text-[#C5A059]">לתורה</span> <span className="text-xs opacity-20">v5</span>
           </h1>
           
           <p className="text-base sm:text-xl md:text-2xl font-medium text-[#5A5A40] mb-3 sm:mb-4 max-w-2xl mx-auto leading-relaxed italic px-4 min-h-[3em] flex items-center justify-center">
@@ -217,16 +197,15 @@ export default function App() {
             כולנו רוצים לקחת חלק במלחמה, להתנדב ולהוסיף טוב, לימוד תורה זה טוב שאנחנו יכולים להוסיף בוודאות!
           </p>
 
-          {/* Main Progress Card */}
-          <div className="glass-card rounded-3xl p-5 sm:p-8 md:p-12 max-w-2xl mx-auto mx-2 sm:mx-auto">
+          <div className="glass-card rounded-3xl p-5 sm:p-8 md:p-12 max-w-2xl mx-auto shadow-xl bg-white/80 backdrop-blur-md border border-white">
             <div className="flex flex-col sm:flex-row justify-between items-center sm:items-end gap-4 sm:gap-0 mb-6 sm:mb-4">
               <div className="text-center sm:text-right">
                 <span className="block text-[10px] sm:text-sm uppercase tracking-widest text-[#8E6E37] font-bold mb-1">הושגו עד כה</span>
                 <motion.span 
                   key={totalHours}
-                  initial={{ scale: 1.2, color: '#C5A059' }}
-                  animate={{ scale: 1, color: '#2D2926' }}
-                  className="text-4xl sm:text-6xl font-black font-display"
+                  initial={{ scale: 1.2 }}
+                  animate={{ scale: 1 }}
+                  className="text-4xl sm:text-6xl font-black font-display text-[#2D2926]"
                 >
                   {totalHours.toLocaleString()}
                 </motion.span>
@@ -238,12 +217,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* Progress Bar */}
             <div className="relative h-6 bg-black/5 rounded-full overflow-hidden mb-8">
               <motion.div 
                 initial={{ width: 0 }}
                 animate={{ width: `${progress}%` }}
-                transition={{ duration: 1.5, ease: "easeOut" }}
+                transition={{ duration: 1.5 }}
                 className="absolute inset-y-0 right-0 charidy-gradient"
               />
               <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white mix-blend-difference">
@@ -262,120 +240,50 @@ export default function App() {
         </motion.div>
       </header>
 
-      {/* Quote Section */}
-      <section className="py-12 md:py-20 bg-[#C5A059]/5 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none">
-          <div className="absolute top-10 left-10 w-32 h-32 md:w-64 md:h-64 border-4 border-[#C5A059] rounded-full" />
-          <div className="absolute bottom-10 right-10 w-48 h-48 md:w-96 md:h-96 border-4 border-[#C5A059] rounded-full" />
-        </div>
-        
-        <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            className="space-y-4 md:space-y-6"
-          >
-            <Quote className="w-8 h-8 md:w-12 md:h-12 text-[#C5A059] mx-auto opacity-40" />
-            <h2 className="text-2xl md:text-5xl font-black font-display text-[#2D2926] leading-tight">
-              כי את התורה שלך - <span className="text-[#C5A059]">רק אתה</span> יכול ללמוד
-            </h2>
-            <div className="w-16 md:w-24 h-1 bg-[#C5A059] mx-auto rounded-full" />
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Stats & Info Section */}
-      <section className="py-12 md:py-24 bg-white relative z-10">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-12 text-center">
-            <div className="p-4 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10">
-              <div className="w-10 h-10 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-3 md:mb-6">
-                <Users size={24} className="md:w-7 md:h-7" />
-              </div>
-              <h3 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">{commitments.length}</h3>
-              <p className="text-[10px] md:text-base text-[#5A5A40]">משתתפים שכבר לקחו חלק</p>
-            </div>
-            <div className="p-4 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10">
-              <div className="w-10 h-10 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-3 md:mb-6">
-                <BookOpen size={24} className="md:w-7 md:h-7" />
-              </div>
-              <h3 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">לימוד משותף</h3>
-              <p className="text-[10px] md:text-base text-[#5A5A40]">כל שעה מצטרפת לבניין האומה</p>
-            </div>
-            <div className="p-4 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10 col-span-2 md:col-span-1">
-              <div className="w-10 h-10 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-3 md:mb-6">
-                <Clock size={24} className="md:w-7 md:h-7" />
-              </div>
-              <h3 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">זמן איכות</h3>
-              <p className="text-[10px] md:text-base text-[#5A5A40]">השקעה נצחית ברוח ישראל</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Recent Commitments Section */}
-      <section className="py-16 md:py-24 bg-[#FDFCF8]">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="flex items-center justify-between mb-8 md:mb-12">
-            <h2 className="text-2xl md:text-3xl font-black font-display">מצטרפים אחרונים</h2>
-            <div className="h-px flex-1 bg-[#C5A059]/20 mx-4 md:mx-8 hidden sm:block" />
-            <Heart className="text-[#C5A059]" />
-          </div>
+      <section className="py-16 md:py-24 max-w-4xl mx-auto px-4">
+        <div className="flex items-center justify-between mb-8 md:mb-12">
+          <h2 className="text-2xl md:text-3xl font-black font-display">מצטרפים אחרונים</h2>
+          <Heart className="text-[#C5A059]" />
+        </div>
 
-          <div className="space-y-3 md:space-y-4">
-            <AnimatePresence initial={false}>
-              {commitments.map((c, index) => (
-                <motion.div 
-                  key={c.id}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="bg-white p-4 md:p-6 rounded-2xl border border-[#C5A059]/10 shadow-sm flex items-center justify-between group hover:border-[#C5A059]/30 transition-colors"
-                >
-                  <div className="flex items-center gap-3 md:gap-4">
-                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-[#C5A059]/5 flex items-center justify-center text-[#C5A059]">
-                      <Quote size={16} className="md:w-5 md:h-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-base md:text-lg">{c.name}</h4>
-                      <p className="text-xs md:text-sm text-[#5A5A40] opacity-70">
-                        {c.timestamp?.toDate ? c.timestamp.toDate().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : 'כרגע'}
-                      </p>
-                    </div>
+        <div className="space-y-3 md:space-y-4">
+          {commitments.length === 0 && !connectionError && (
+            <div className="text-center py-12 text-[#5A5A40] opacity-50">טוען נתונים...</div>
+          )}
+          <AnimatePresence initial={false}>
+            {commitments.map((c, index) => (
+              <motion.div 
+                key={c.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-white p-4 md:p-6 rounded-2xl border border-[#C5A059]/10 shadow-sm flex items-center justify-between group hover:border-[#C5A059]/30 transition-colors"
+              >
+                <div className="flex items-center gap-3 md:gap-4">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-[#C5A059]/5 flex items-center justify-center text-[#C5A059]">
+                    <Quote size={16} />
                   </div>
-                  <div className="text-left">
-                    <span className="text-xl md:text-2xl font-black text-[#C5A059]">{c.hours}</span>
-                    <span className="text-xs md:text-sm font-bold text-[#5A5A40] mr-1">שעות</span>
+                  <div>
+                    <h4 className="font-bold text-base md:text-lg">{c.name}</h4>
+                    <p className="text-xs md:text-sm text-[#5A5A40] opacity-70">
+                      {c.timestamp?.toDate ? c.timestamp.toDate().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : 'כרגע'}
+                    </p>
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+                </div>
+                <div className="text-left">
+                  <span className="text-xl md:text-2xl font-black text-[#C5A059]">{c.hours}</span>
+                  <span className="text-xs md:text-sm font-bold text-[#5A5A40] mr-1">שעות</span>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-[#2D2926] text-white py-16 text-center">
-        <div className="max-w-4xl mx-auto px-4">
-          <h2 className="text-3xl font-display font-black mb-4">כוננים לתורה</h2>
-          <p className="text-white/60 mb-8 italic">"מוסיפים תורה, מוסיפים טוב, מוסיפים חיל לאומה"</p>
-          <div className="flex justify-center gap-6 mb-12">
-            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-[#C5A059] transition-colors cursor-pointer">
-              <Heart size={18} />
-            </div>
-            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-[#C5A059] transition-colors cursor-pointer">
-              <BookOpen size={18} />
-            </div>
-          </div>
-          <p className="text-xs text-white/30">© {new Date().getFullYear()} כל הזכויות שמורות לקמפיין כוננים לתורה</p>
-        </div>
-      </footer>
 
       {/* Commitment Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -384,118 +292,35 @@ export default function App() {
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
               className="relative bg-[#FDFCF8] w-full max-w-md rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
             >
-              <div className="charidy-gradient p-6 sm:p-8 text-white text-center">
-                <h3 className="text-xl sm:text-2xl font-black mb-2">אני מצטרף לכוננים!</h3>
-                <p className="text-white/80 text-xs sm:text-sm">בחרו את כמות השעות שתרצו להוסיף</p>
+              <div className="charidy-gradient p-6 text-white text-center">
+                <h3 className="text-xl font-black mb-1">אני מצטרף לכוננים!</h3>
+                <p className="text-white/80 text-xs">בחרו את כמות השעות שתרצו להוסיף</p>
               </div>
               
-              <form onSubmit={handleCommit} className="p-6 sm:p-8 space-y-4 sm:space-y-6">
+              <form onSubmit={handleCommit} className="p-6 space-y-4">
                 <div>
-                  <label className="block text-xs sm:text-sm font-bold text-[#8E6E37] mb-2">שם מלא / שם המשפחה *</label>
+                  <label className="block text-xs font-bold text-[#8E6E37] mb-1">שם מלא / שם המשפחה *</label>
                   <input 
-                    type="text" 
-                    required
-                    value={name}
+                    type="text" required value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="למשל: משפחת ישראלי"
-                    className="w-full px-4 py-3 rounded-xl border border-[#C5A059]/20 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/50 transition-all bg-white text-sm sm:text-base"
+                    className="w-full px-4 py-3 rounded-xl border border-[#C5A059]/20 focus:ring-2 focus:ring-[#C5A059]/50 bg-white"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs sm:text-sm font-bold text-[#8E6E37] mb-2">שם מוסד הלימודים (רשות)</label>
-                  <input 
-                    type="text" 
-                    value={institution}
-                    onChange={(e) => setInstitution(e.target.value)}
-                    placeholder="למשל: ישיבת אור החיים"
-                    className="w-full px-4 py-3 rounded-xl border border-[#C5A059]/20 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/50 transition-all bg-white text-sm sm:text-base"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-bold text-[#8E6E37] mb-2">מספר טלפון (רשות - לשימוש פנימי בלבד)</label>
-                  <input 
-                    type="tel" 
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="לעדכונים והגרלות"
-                    className="w-full px-4 py-3 rounded-xl border border-[#C5A059]/20 focus:outline-none focus:ring-2 focus:ring-[#C5A059]/50 transition-all bg-white text-sm sm:text-base"
-                  />
-                  <p className="text-[10px] text-[#5A5A40] mt-1 opacity-60">המספר לא יוצג באתר ויישמר אצל המנהל בלבד</p>
-                </div>
-                
-                <div>
-                  <label className="block text-xs sm:text-sm font-bold text-[#8E6E37] mb-2">כמות שעות לימוד</label>
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <button 
-                      type="button"
-                      onClick={() => setHours(Math.max(1, hours - 1))}
-                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-[#C5A059]/20 flex items-center justify-center text-[#C5A059] hover:bg-[#C5A059]/5 active:bg-[#C5A059]/10"
-                    >
-                      -
-                    </button>
-                    <input 
-                      type="number" 
-                      required
-                      min="1"
-                      value={hours}
-                      onChange={(e) => setHours(parseInt(e.target.value) || 1)}
-                      className="flex-1 text-center text-xl sm:text-2xl font-black text-[#2D2926] focus:outline-none bg-transparent"
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setHours(hours + 1)}
-                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl border border-[#C5A059]/20 flex items-center justify-center text-[#C5A059] hover:bg-[#C5A059]/5 active:bg-[#C5A059]/10"
-                    >
-                      +
-                    </button>
+                  <label className="block text-xs font-bold text-[#8E6E37] mb-1">כמות שעות לימוד</label>
+                  <div className="flex items-center gap-4">
+                    <button type="button" onClick={() => setHours(Math.max(1, hours - 1))} className="w-10 h-10 rounded-xl border border-[#C5A059]/20 text-[#C5A059]">-</button>
+                    <input type="number" required min="1" value={hours} onChange={(e) => setHours(parseInt(e.target.value) || 1)} className="flex-1 text-center text-xl font-black bg-transparent" />
+                    <button type="button" onClick={() => setHours(hours + 1)} className="w-10 h-10 rounded-xl border border-[#C5A059]/20 text-[#C5A059]">+</button>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  {[10, 50, 100].map(val => (
-                    <button 
-                      key={val}
-                      type="button"
-                      onClick={() => setHours(val)}
-                      className={`py-2 rounded-lg border text-xs sm:text-sm font-bold transition-all ${hours === val ? 'bg-[#C5A059] text-white border-[#C5A059]' : 'border-[#C5A059]/20 text-[#C5A059] hover:bg-[#C5A059]/5'}`}
-                    >
-                      {val} שעות
-                    </button>
-                  ))}
-                </div>
-
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3 sm:py-4 rounded-xl charidy-gradient text-white font-bold text-base sm:text-lg shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? (
-                    <motion.div 
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                      className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                    />
-                  ) : (
-                    <>
-                      <CheckCircle2 size={18} className="sm:w-5 sm:h-5" />
-                      <span>אישור והצטרפות</span>
-                    </>
-                  )}
-                </button>
-                
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="w-full py-1 text-[#5A5A40] text-xs sm:text-sm font-medium hover:underline"
-                >
-                  ביטול
+                <button type="submit" disabled={isSubmitting} className="w-full py-4 rounded-xl charidy-gradient text-white font-bold text-lg shadow-lg flex items-center justify-center gap-2">
+                  {isSubmitting ? "שומר..." : "אישור והצטרפות"}
                 </button>
               </form>
             </motion.div>

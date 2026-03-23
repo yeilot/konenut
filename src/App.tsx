@@ -166,8 +166,12 @@ export default function App() {
             כוננים <span className="text-[#C5A059]">לתורה</span>
           </h1>
           
-          <p className="text-lg sm:text-xl md:text-2xl font-medium text-[#5A5A40] mb-10 md:mb-12 max-w-2xl mx-auto leading-relaxed italic px-4">
+          <p className="text-lg sm:text-xl md:text-2xl font-medium text-[#5A5A40] mb-4 max-w-2xl mx-auto leading-relaxed italic px-4">
             "מוסיפים תורה, מוסיפים טוב, מוסיפים חיל לאומה"
+          </p>
+          
+          <p className="text-base sm:text-lg md:text-xl text-[#2D2926] mb-10 md:mb-12 max-w-3xl mx-auto leading-relaxed px-6 font-medium">
+            כולנו רוצים לקחת חלק במלחמה, להתנדב ולהוסיף טוב, לימוד תורה זה טוב שאנחנו יכולים להוסיף בוודאות!
           </p>
 
           {/* Main Progress Card */}
@@ -214,6 +218,29 @@ export default function App() {
           </div>
         </motion.div>
       </header>
+
+      {/* Quote Section */}
+      <section className="py-20 bg-[#C5A059]/5 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none">
+          <div className="absolute top-10 left-10 w-64 h-64 border-4 border-[#C5A059] rounded-full" />
+          <div className="absolute bottom-10 right-10 w-96 h-96 border-4 border-[#C5A059] rounded-full" />
+        </div>
+        
+        <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            className="space-y-6"
+          >
+            <Quote className="w-12 h-12 text-[#C5A059] mx-auto opacity-40" />
+            <h2 className="text-3xl md:text-5xl font-black font-display text-[#2D2926] leading-tight">
+              כי את התורה שלך - <span className="text-[#C5A059]">רק אתה</span> יכול ללמוד
+            </h2>
+            <div className="w-24 h-1 bg-[#C5A059] mx-auto rounded-full" />
+          </motion.div>
+        </div>
+      </section>
 
       {/* Stats & Info Section */}
       <section className="py-16 md:py-24 bg-white relative z-10">

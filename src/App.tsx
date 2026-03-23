@@ -103,13 +103,14 @@ export default function App() {
   useEffect(() => {
     const testConnection = async () => {
       try {
-        // Test connection using the allowed 'commitments' collection
         const q = query(collection(db, 'commitments'), limit(1));
         await getDocsFromServer(q);
-        setConnectionError(null); // Clear error if successful
+        setConnectionError(null); 
       } catch (error: any) {
         console.error("Connection Test Error:", error);
-        setConnectionError(`שגיאת חיבור (קוד: ${error.code || 'unknown'}): ${error.message || 'לא ידוע'}.`);
+        const code = error.code || 'unknown';
+        const message = error.message || 'לא ידוע';
+        setConnectionError(`שגיאת חיבור (קוד: ${code}): ${message}. וודא שאתה מחובר לאינטרנט ושהגדרות הפרויקט תקינות.`);
       }
     };
     testConnection();
@@ -196,7 +197,7 @@ export default function App() {
           </div>
           
           <h1 className="text-4xl sm:text-6xl md:text-8xl font-display font-black text-[#2D2926] mb-4 sm:mb-6 tracking-tighter leading-tight sm:leading-none px-2">
-            כוננים <span className="text-[#C5A059]">לתורה</span> <span className="text-xs opacity-20">v3</span>
+            כוננים <span className="text-[#C5A059]">לתורה</span> <span className="text-xs opacity-20">v4</span>
           </h1>
           
           <p className="text-base sm:text-xl md:text-2xl font-medium text-[#5A5A40] mb-3 sm:mb-4 max-w-2xl mx-auto leading-relaxed italic px-4 min-h-[3em] flex items-center justify-center">

@@ -1,0 +1,44 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: commitments
+// Document ID: auto-generated
+// Fields:
+//   - name: string (required, 1-100 chars) - Name of the person/family
+//   - hours: number (required, positive) - Number of hours
+//   - timestamp: timestamp (required) - When it was created
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidCommitment(data) {
+      return data.keys().hasAll(['name', 'hours', 'timestamp']) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.hours is number && data.hours > 0 && data.hours <= 10000 &&
+             data.timestamp is timestamp &&
+             (!('institution' in data) || (data.institution is string && data.institution.size() <= 150)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20));
+    }
+
+    match /commitments/{commitmentId} {
+      // Allow anyone to read the commitments to see the total and recent list
+      allow read: if true;
+      
+      // Allow anyone to create a commitment (even unauthenticated for simplicity in a public campaign)
+      // but you might want to restrict this to authenticated users later.
+      // For now, we allow public creation as requested for a "Charidy" style site.
+      allow create: if isValidCommitment(request.resource.data);
+      
+      // No updates or deletes allowed by public
+      allow update, delete: if false;
+    }
+  }
+}

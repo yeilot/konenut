@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&family=Amatic+SC:wght@700&family=Heebo:wght@300;400;700;900&family=Varela+Round&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Assistant", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Heebo", sans-serif;
+  --font-accent: "Amatic SC", cursive;
+}
+
+body {
+  @apply bg-[#FDFCF8] text-[#2D2926] antialiased;
+  direction: rtl;
+}
+
+.charidy-gradient {
+  background: linear-gradient(135deg, #C5A059 0%, #8E6E37 100%);
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl;
+}

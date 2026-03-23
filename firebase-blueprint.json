@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "Commitment": {
+      "title": "Commitment",
+      "description": "A study hour commitment from a user",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the person or family committing"
+        },
+        "hours": {
+          "type": "integer",
+          "description": "Number of hours committed"
+        },
+        "institution": {
+          "type": "string",
+          "description": "Optional name of the study institution"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Optional phone number for updates/raffles (private)"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the commitment was made"
+        }
+      },
+      "required": ["name", "hours", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/commitments": {
+      "schema": "Commitment",
+      "description": "Collection of all study hour commitments"
+    }
+  }
+}

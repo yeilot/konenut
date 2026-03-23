@@ -1,8 +1,8 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
-// הגדרות קבועות כדי למנוע בעיות טעינה בפריסה
+// הגדרות החיבור לפרויקט
 const firebaseConfig = {
   "projectId": "ai-studio-applet-webapp-e9dd9",
   "appId": "1:670608490894:web:38d9c18f671bb2f177a4df",
@@ -13,6 +13,8 @@ const firebaseConfig = {
   "messagingSenderId": "670608490894"
 };
 
-const app = initializeApp(firebaseConfig);
+// בדיקה אם האפליקציה כבר אותחלה כדי למנוע כפילויות
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);

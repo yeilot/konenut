@@ -14,8 +14,10 @@ import {
   Trophy,
   Quote,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 
 // Firebase Imports
 import { db } from './firebase';
@@ -27,9 +29,12 @@ import {
   orderBy, 
   limit, 
   Timestamp,
-  getDocFromServer,
+  getDocsFromServer,
   doc
 } from 'firebase/firestore';
+
+// Initialize Gemini
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // Types
 interface Commitment {
@@ -70,16 +75,41 @@ export default function App() {
   const [phone, setPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [aiQuote, setAiQuote] = useState<string>('"מוסיפים תורה, מוסיפים טוב, מוסיפים חיל לאומה"');
+  const [isGeneratingQuote, setIsGeneratingQuote] = useState(false);
+
+  const generateQuote = async () => {
+    if (!process.env.GEMINI_API_KEY) {
+      alert("אנא הגדר את מפתח ה-Gemini בנטליפי כדי להשתמש בתכונה זו.");
+      return;
+    }
+    setIsGeneratingQuote(true);
+    try {
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "תן ציטוט קצר ומעורר השראה על חשיבות לימוד התורה לעם ישראל. רק הציטוט עצמו בעברית.",
+      });
+      if (response.text) {
+        setAiQuote(response.text.trim());
+      }
+    } catch (error) {
+      console.error("Gemini Error:", error);
+    } finally {
+      setIsGeneratingQuote(false);
+    }
+  };
 
   // Test Connection & Listen for Real-time Updates
   useEffect(() => {
     const testConnection = async () => {
       try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
+        // Test connection using the allowed 'commitments' collection
+        const q = query(collection(db, 'commitments'), limit(1));
+        await getDocsFromServer(q);
+        setConnectionError(null); // Clear error if successful
       } catch (error: any) {
-        if (error.message?.includes('the client is offline')) {
-          setConnectionError("שגיאת חיבור לבסיס הנתונים. אנא וודא שהגדרות ה-Firebase תקינות.");
-        }
+        console.error("Connection Test Error:", error);
+        setConnectionError(`שגיאת חיבור (קוד: ${error.code || 'unknown'}): ${error.message || 'לא ידוע'}.`);
       }
     };
     testConnection();
@@ -112,13 +142,16 @@ export default function App() {
     setIsSubmitting(true);
     
     try {
-      await addDoc(collection(db, 'commitments'), {
+      const commitmentData: any = {
         name,
         hours: Number(hours),
-        institution: institution || null,
-        phone: phone || null,
         timestamp: Timestamp.now()
-      });
+      };
+
+      if (institution) commitmentData.institution = institution;
+      if (phone) commitmentData.phone = phone;
+
+      await addDoc(collection(db, 'commitments'), commitmentData);
       
       setName('');
       setHours(1);
@@ -162,36 +195,45 @@ export default function App() {
             <span>יעד הקמפיין: 18,000 שעות לימוד</span>
           </div>
           
-          <h1 className="text-5xl sm:text-6xl md:text-8xl font-display font-black text-[#2D2926] mb-6 tracking-tighter leading-none px-2">
-            כוננים <span className="text-[#C5A059]">לתורה</span>
+          <h1 className="text-4xl sm:text-6xl md:text-8xl font-display font-black text-[#2D2926] mb-4 sm:mb-6 tracking-tighter leading-tight sm:leading-none px-2">
+            כוננים <span className="text-[#C5A059]">לתורה</span> <span className="text-xs opacity-20">v3</span>
           </h1>
           
-          <p className="text-lg sm:text-xl md:text-2xl font-medium text-[#5A5A40] mb-4 max-w-2xl mx-auto leading-relaxed italic px-4">
-            "מוסיפים תורה, מוסיפים טוב, מוסיפים חיל לאומה"
+          <p className="text-base sm:text-xl md:text-2xl font-medium text-[#5A5A40] mb-3 sm:mb-4 max-w-2xl mx-auto leading-relaxed italic px-4 min-h-[3em] flex items-center justify-center">
+            {aiQuote}
           </p>
           
-          <p className="text-base sm:text-lg md:text-xl text-[#2D2926] mb-10 md:mb-12 max-w-3xl mx-auto leading-relaxed px-6 font-medium">
+          <button 
+            onClick={generateQuote}
+            disabled={isGeneratingQuote}
+            className="mb-8 text-[#C5A059] hover:text-[#8E6E37] flex items-center gap-2 mx-auto text-sm font-bold transition-all"
+          >
+            <Sparkles size={14} className={isGeneratingQuote ? "animate-spin" : ""} />
+            <span>{isGeneratingQuote ? "מייצר ציטוט..." : "קבל ציטוט השראה מה-AI"}</span>
+          </button>
+          
+          <p className="text-sm sm:text-lg md:text-xl text-[#2D2926] mb-8 md:mb-12 max-w-3xl mx-auto leading-relaxed px-6 font-medium">
             כולנו רוצים לקחת חלק במלחמה, להתנדב ולהוסיף טוב, לימוד תורה זה טוב שאנחנו יכולים להוסיף בוודאות!
           </p>
 
           {/* Main Progress Card */}
-          <div className="glass-card rounded-3xl p-6 sm:p-8 md:p-12 max-w-2xl mx-auto mx-2 sm:mx-auto">
-            <div className="flex flex-col sm:flex-row justify-between items-center sm:items-end gap-6 sm:gap-0 mb-6 sm:mb-4">
+          <div className="glass-card rounded-3xl p-5 sm:p-8 md:p-12 max-w-2xl mx-auto mx-2 sm:mx-auto">
+            <div className="flex flex-col sm:flex-row justify-between items-center sm:items-end gap-4 sm:gap-0 mb-6 sm:mb-4">
               <div className="text-center sm:text-right">
-                <span className="block text-xs sm:text-sm uppercase tracking-widest text-[#8E6E37] font-bold mb-1">הושגו עד כה</span>
+                <span className="block text-[10px] sm:text-sm uppercase tracking-widest text-[#8E6E37] font-bold mb-1">הושגו עד כה</span>
                 <motion.span 
                   key={totalHours}
                   initial={{ scale: 1.2, color: '#C5A059' }}
                   animate={{ scale: 1, color: '#2D2926' }}
-                  className="text-5xl sm:text-6xl font-black font-display"
+                  className="text-4xl sm:text-6xl font-black font-display"
                 >
                   {totalHours.toLocaleString()}
                 </motion.span>
-                <span className="text-lg sm:text-xl font-bold text-[#5A5A40] mr-2">שעות</span>
+                <span className="text-base sm:text-xl font-bold text-[#5A5A40] mr-2">שעות</span>
               </div>
               <div className="text-center sm:text-left">
-                <span className="block text-xs sm:text-sm uppercase tracking-widest text-[#8E6E37] font-bold mb-1">יעד</span>
-                <span className="text-2xl sm:text-3xl font-bold text-[#2D2926]">{GOAL_HOURS.toLocaleString()}</span>
+                <span className="block text-[10px] sm:text-sm uppercase tracking-widest text-[#8E6E37] font-bold mb-1">יעד</span>
+                <span className="text-xl sm:text-3xl font-bold text-[#2D2926]">{GOAL_HOURS.toLocaleString()}</span>
               </div>
             </div>
 
@@ -220,10 +262,10 @@ export default function App() {
       </header>
 
       {/* Quote Section */}
-      <section className="py-20 bg-[#C5A059]/5 relative overflow-hidden">
+      <section className="py-12 md:py-20 bg-[#C5A059]/5 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none">
-          <div className="absolute top-10 left-10 w-64 h-64 border-4 border-[#C5A059] rounded-full" />
-          <div className="absolute bottom-10 right-10 w-96 h-96 border-4 border-[#C5A059] rounded-full" />
+          <div className="absolute top-10 left-10 w-32 h-32 md:w-64 md:h-64 border-4 border-[#C5A059] rounded-full" />
+          <div className="absolute bottom-10 right-10 w-48 h-48 md:w-96 md:h-96 border-4 border-[#C5A059] rounded-full" />
         </div>
         
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
@@ -231,41 +273,41 @@ export default function App() {
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
-            className="space-y-6"
+            className="space-y-4 md:space-y-6"
           >
-            <Quote className="w-12 h-12 text-[#C5A059] mx-auto opacity-40" />
-            <h2 className="text-3xl md:text-5xl font-black font-display text-[#2D2926] leading-tight">
+            <Quote className="w-8 h-8 md:w-12 md:h-12 text-[#C5A059] mx-auto opacity-40" />
+            <h2 className="text-2xl md:text-5xl font-black font-display text-[#2D2926] leading-tight">
               כי את התורה שלך - <span className="text-[#C5A059]">רק אתה</span> יכול ללמוד
             </h2>
-            <div className="w-24 h-1 bg-[#C5A059] mx-auto rounded-full" />
+            <div className="w-16 md:w-24 h-1 bg-[#C5A059] mx-auto rounded-full" />
           </motion.div>
         </div>
       </section>
 
       {/* Stats & Info Section */}
-      <section className="py-16 md:py-24 bg-white relative z-10">
+      <section className="py-12 md:py-24 bg-white relative z-10">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-12 text-center">
-            <div className="p-6 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10">
-              <div className="w-12 h-12 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-4 md:mb-6">
-                <Users size={28} />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-12 text-center">
+            <div className="p-4 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10">
+              <div className="w-10 h-10 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-3 md:mb-6">
+                <Users size={24} className="md:w-7 md:h-7" />
               </div>
-              <h3 className="text-xl md:text-2xl font-bold mb-1 md:mb-2">{commitments.length}</h3>
-              <p className="text-sm md:text-base text-[#5A5A40]">משתתפים שכבר לקחו חלק</p>
+              <h3 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">{commitments.length}</h3>
+              <p className="text-[10px] md:text-base text-[#5A5A40]">משתתפים שכבר לקחו חלק</p>
             </div>
-            <div className="p-6 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10">
-              <div className="w-12 h-12 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-4 md:mb-6">
-                <BookOpen size={28} />
+            <div className="p-4 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10">
+              <div className="w-10 h-10 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-3 md:mb-6">
+                <BookOpen size={24} className="md:w-7 md:h-7" />
               </div>
-              <h3 className="text-xl md:text-2xl font-bold mb-1 md:mb-2">לימוד משותף</h3>
-              <p className="text-sm md:text-base text-[#5A5A40]">כל שעה מצטרפת לבניין האומה</p>
+              <h3 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">לימוד משותף</h3>
+              <p className="text-[10px] md:text-base text-[#5A5A40]">כל שעה מצטרפת לבניין האומה</p>
             </div>
-            <div className="p-6 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10 sm:col-span-2 md:col-span-1">
-              <div className="w-12 h-12 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-4 md:mb-6">
-                <Clock size={28} />
+            <div className="p-4 md:p-8 rounded-3xl bg-[#FDFCF8] border border-[#C5A059]/10 col-span-2 md:col-span-1">
+              <div className="w-10 h-10 md:w-16 md:h-16 bg-[#C5A059]/10 rounded-2xl flex items-center justify-center text-[#C5A059] mx-auto mb-3 md:mb-6">
+                <Clock size={24} className="md:w-7 md:h-7" />
               </div>
-              <h3 className="text-xl md:text-2xl font-bold mb-1 md:mb-2">זמן איכות</h3>
-              <p className="text-sm md:text-base text-[#5A5A40]">השקעה נצחית ברוח ישראל</p>
+              <h3 className="text-lg md:text-2xl font-bold mb-1 md:mb-2">זמן איכות</h3>
+              <p className="text-[10px] md:text-base text-[#5A5A40]">השקעה נצחית ברוח ישראל</p>
             </div>
           </div>
         </div>
@@ -423,7 +465,7 @@ export default function App() {
                       onClick={() => setHours(val)}
                       className={`py-2 rounded-lg border text-xs sm:text-sm font-bold transition-all ${hours === val ? 'bg-[#C5A059] text-white border-[#C5A059]' : 'border-[#C5A059]/20 text-[#C5A059] hover:bg-[#C5A059]/5'}`}
                     >
-                      +{val}
+                      {val} שעות
                     </button>
                   ))}
                 </div>
